@@ -1,0 +1,22 @@
+{
+  "name": "custom-objects",
+  "type": "module",
+  "version": "0.0.1",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "build": "test -d src && custom-objects-build --input src --output dist || true",
+    "lint": "pnpm lint:types && pnpm lint:eslint",
+    "lint:types": "test ! -d src || tsc --noEmit",
+    "lint:eslint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@stripe/extensibility-custom-objects": "1.0.0",
+    "@stripe/extensibility-sdk": "1.5.0"
+  },
+  "devDependencies": {
+    "@stripe/extensibility-custom-objects-tools": "4.0.3",
+    "@stripe/extensibility-test-helpers": "1.0.0"
+  }
+}

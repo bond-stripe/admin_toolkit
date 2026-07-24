@@ -1,0 +1,60 @@
+{
+  "description": "Test",
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@stripe/extensibility-dev-tools": "^1.0.14",
+    "@stripe/extensibility-eslint-plugin": "^1.0.3",
+    "@stripe/extensibility-language-server": "^1.0.0",
+    "@types/node": "^20.19.0",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-workspaces": "^0.12.1",
+    "globals": "^17.4.0",
+    "husky": "^9.1.7",
+    "jiti": "^2.6.1",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "~~proprietary~~",
+  "lint-staged": {
+    "*.{json,md,yaml}": "prettier --write",
+    "*.{ts,mts,mjs,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "name": "gmf-app",
+  "overrides": {
+    "@types/react": "^17.0.2"
+  },
+  "packageManager": "pnpm@10.30.3",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "check": "pnpm build && pnpm lint && pnpm test",
+    "fix:format": "prettier --write .",
+    "fix:lint": "eslint --fix . --ignore-pattern 'extensions/**' && pnpm -r --filter './extensions/*' --if-present fix:lint",
+    "image": "rm -rf .build && create-upload-image .build",
+    "lint": "pnpm lint:types && pnpm lint:eslint && pnpm lint:format",
+    "lint:eslint": "eslint . --ignore-pattern 'extensions/**' && pnpm -r --filter './extensions/*' --if-present lint:eslint && pnpm -r --filter './custom-objects' --if-present lint:eslint",
+    "lint:format": "prettier --check .",
+    "lint:types": "pnpm -r --if-present lint:types",
+    "postimage": "cp pnpm-lock.yaml .build/",
+    "preimage": "pnpm install --lockfile-only && pnpm build && pnpm lint:types && pnpm lint:eslint && pnpm test",
+    "prepare": "husky",
+    "stripe:regen": "gen-workspace --package-dir .",
+    "test": "tsx tools/test.mts",
+    "test:watch": "vitest watch"
+  },
+  "version": "0.0.1"
+}

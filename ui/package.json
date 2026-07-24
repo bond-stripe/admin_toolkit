@@ -1,0 +1,28 @@
+{
+  "dependencies": {
+    "@stripe/ui-extension-sdk": "^9.0.0",
+    "stripe": "^13.4.0"
+  },
+  "description": "Test",
+  "devDependencies": {
+    "@stripe/ui-extension-tools": "^0.0.1",
+    "@types/jest": "^27.5.2",
+    "@types/react": "^17.0.2"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "eslintConfig": {
+    "extends": [
+      "./node_modules/@stripe/ui-extension-tools/eslintrc.ui-extension.js"
+    ]
+  },
+  "license": "~~proprietary~~",
+  "name": "gmf-app-ui",
+  "private": true,
+  "scripts": {
+    "lint": "eslint --ext ts,tsx src",
+    "test": "jest"
+  },
+  "version": "0.0.1"
+}

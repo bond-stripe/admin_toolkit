@@ -1,0 +1,22 @@
+$schema: https://stripe.com/stripe-app/v2.0.0/schema
+id: com.example.subscription-mgmt
+name: GM Toolbar
+version: 0.0.10
+icon: ""
+declarations:
+    distribution_type: private
+    stripe_api_access:
+        permissions:
+            - permission: subscription_read
+              purpose: List recent subscription schedules and filter by AccountNumber and ConfirmationNumber metadata
+            - permission: customer_read
+              purpose: Show the email address for customers with matching subscription schedules
+ui_extension:
+    views:
+        - viewport: stripe.dashboard.home.overview
+          component: Home
+        - viewport: stripe.dashboard.subscription.list
+          component: ScheduleSearch
+    content_security_policy:
+        purpose: ""
+extensions: []

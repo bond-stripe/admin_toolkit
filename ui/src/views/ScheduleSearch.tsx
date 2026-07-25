@@ -620,6 +620,9 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   return (
     <ContextView title="" brandColor="#F6F8FA" brandIcon={BrandIcon}>
       <Box css={{ stack: 'y', rowGap: 'large' }}>
+        <Link href={getDashboardUrl(environment.mode, '/')}>
+          &larr; Toolbar Home
+        </Link>
         {results.length === 0 ? (
           <Box css={{ stack: 'y', rowGap: 'medium' }}>
             <Box

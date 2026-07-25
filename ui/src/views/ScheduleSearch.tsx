@@ -246,6 +246,7 @@ type ScheduleWorkPaneProps = {
   mode: ExtensionContextValue['environment']['mode'];
   onClose: () => void;
   onNavigate: (index: number) => void;
+  onNewSearch: () => void;
   result: SearchResult;
   results: SearchResult[];
   schedule: Stripe.SubscriptionSchedule | null;
@@ -258,6 +259,7 @@ const ScheduleWorkPane = ({
   mode,
   onClose,
   onNavigate,
+  onNewSearch,
   result,
   results,
   schedule,
@@ -290,7 +292,7 @@ const ScheduleWorkPane = ({
           Open in Dashboard
         </Button>
       }
-      secondaryAction={<Button onPress={onClose}>Close</Button>}
+      secondaryAction={<Button onPress={onNewSearch}>New search</Button>}
     >
       <Box css={{ stack: 'y', rowGap: 'large' }}>
         {results.length > 1 && (
@@ -707,6 +709,7 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           mode={environment.mode}
           onClose={closeScheduleWorkPane}
           onNavigate={(index) => void openScheduleWorkPane(results[index], index)}
+          onNewSearch={startNewSearch}
           result={selectedResult}
           results={results}
           schedule={selectedSchedule}

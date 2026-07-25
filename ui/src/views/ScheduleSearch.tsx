@@ -245,8 +245,11 @@ type ScheduleWorkPaneProps = {
   loading: boolean;
   mode: ExtensionContextValue['environment']['mode'];
   onClose: () => void;
+  onNavigate: (index: number) => void;
   result: SearchResult;
+  results: SearchResult[];
   schedule: Stripe.SubscriptionSchedule | null;
+  selectedIndex: number;
 };
 
 const ScheduleWorkPane = ({
@@ -254,8 +257,11 @@ const ScheduleWorkPane = ({
   loading,
   mode,
   onClose,
+  onNavigate,
   result,
+  results,
   schedule,
+  selectedIndex,
 }: ScheduleWorkPaneProps) => {
   const customerId = formatResourceId(schedule?.customer ?? result.customerId);
   const accountNumber =
@@ -287,6 +293,30 @@ const ScheduleWorkPane = ({
       secondaryAction={<Button onPress={onClose}>Close</Button>}
     >
       <Box css={{ stack: 'y', rowGap: 'large' }}>
+        {results.length > 1 && (
+          <Box css={{ stack: 'x', distribute: 'space-between', alignY: 'center' }}>
+            <Button
+              type="secondary"
+              size="small"
+              disabled={selectedIndex === 0}
+              onPress={() => onNavigate(selectedIndex - 1)}
+            >
+              Previous
+            </Button>
+            <Box css={{ font: 'caption', color: 'secondary' }}>
+              {selectedIndex + 1} of {results.length}
+            </Box>
+            <Button
+              type="secondary"
+              size="small"
+              disabled={selectedIndex === results.length - 1}
+              onPress={() => onNavigate(selectedIndex + 1)}
+            >
+              Next
+            </Button>
+          </Box>
+        )}
+
         {loading && (
           <Box css={{ stack: 'x', columnGap: 'small' }}>
             <Spinner size="small" />
@@ -409,6 +439,7 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
     cachedSearch?.scannedScheduleCount ?? 0
   );
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedSchedule, setSelectedSchedule] =
     useState<Stripe.SubscriptionSchedule | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -552,10 +583,11 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
     setScheduleLoading(false);
   };
 
-  const openScheduleWorkPane = async (result: SearchResult) => {
+  const openScheduleWorkPane = async (result: SearchResult, index?: number) => {
     const currentRequestId = scheduleRequestId.current + 1;
     scheduleRequestId.current = currentRequestId;
     setSelectedResult(result);
+    setSelectedIndex(index ?? results.indexOf(result));
     setSelectedSchedule(null);
     setScheduleError(null);
     setScheduleLoading(true);
@@ -674,8 +706,11 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           loading={scheduleLoading}
           mode={environment.mode}
           onClose={closeScheduleWorkPane}
+          onNavigate={(index) => void openScheduleWorkPane(results[index], index)}
           result={selectedResult}
+          results={results}
           schedule={selectedSchedule}
+          selectedIndex={selectedIndex}
         />
       )}
     </ContextView>

@@ -11,6 +11,8 @@ declarations:
               purpose: List recent subscription schedules and filter by AccountNumber and ConfirmationNumber metadata
             - permission: customer_read
               purpose: Show the email address for customers with matching subscription schedules
+            - permission: payment_method_read
+              purpose: Confirm the bank account on file (bank name and last four digits) attached to a customer and their subscription schedule
 ui_extension:
     views:
         - viewport: stripe.dashboard.home.overview

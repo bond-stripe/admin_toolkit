@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Stripe from 'stripe';
 
@@ -22,11 +22,18 @@ import { clipboardWriteText } from '@stripe/ui-extension-sdk/utils';
 
 import BrandIcon from './brand_icon.svg';
 import {
+  filterResults,
   formatCustomerId,
   formatDate,
+  formatMaskedBankAccountNumber,
   formatScheduleId,
   getDashboardUrl,
+  getWindowStartTimestamp,
+  LOOKBACK_DAYS,
   parseCachedSearch,
+  PRELOAD_CAP,
+  resolvePaymentMethod,
+  sortBySoonestStart,
   SEARCH_STORAGE_KEY,
   type CachedSearch,
   type SearchResult,
@@ -34,7 +41,6 @@ import {
 import ScheduleSearchResults from './ScheduleSearchResults';
 
 const PAGE_SIZE = 100;
-const MAX_RESULTS = 100;
 const ACCOUNT_NUMBER_METADATA_KEY = 'AccountNumber';
 const CONFIRMATION_NUMBER_METADATA_KEY = 'ConfirmationNumber';
 const stripe = new Stripe(STRIPE_API_KEY, {
@@ -44,9 +50,6 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 
 const getResourceId = <T extends { id: string }>(resource: string | T | null) =>
   typeof resource === 'string' ? resource : (resource?.id ?? null);
-
-const includesSearchTerm = (value: string, searchTerm: string) =>
-  value.toLowerCase().includes(searchTerm.toLowerCase());
 
 const getCustomerEmail = (customer: unknown) =>
   typeof customer === 'object' &&
@@ -253,7 +256,7 @@ type ScheduleWorkPaneProps = {
   selectedIndex: number;
 };
 
-const ScheduleWorkPane = ({
+export const ScheduleWorkPane = ({
   error,
   loading,
   mode,
@@ -273,6 +276,7 @@ const ScheduleWorkPane = ({
   const phase = schedule?.phases[0] ?? null;
   const phaseIterations = phase ? getIterationCount(phase) : null;
   const phaseAmount = phase ? getPhaseAmount(phase) : null;
+  const paymentMethod = schedule ? resolvePaymentMethod(schedule) : null;
 
   return (
     <FocusView
@@ -389,6 +393,68 @@ const ScheduleWorkPane = ({
 
         <Divider />
 
+        <Box css={{ stack: 'y', rowGap: 'small' }}>
+          <Box css={{ font: 'bodyEmphasized' }}>Upcoming first payment</Box>
+          <Box css={{ color: 'secondary' }}>
+            Not started — no payment has been charged yet.
+          </Box>
+          {phase && (
+            <DetailRow label="First payment scheduled for">
+              {formatTimestamp(phase.start_date)}
+            </DetailRow>
+          )}
+          {phase && phaseAmount && (
+            <DetailRow label="First charge amount">
+              {formatPhaseAmount(
+                phaseAmount.amount,
+                phaseAmount.currency,
+                phaseAmount.variable
+              )}
+            </DetailRow>
+          )}
+        </Box>
+
+        <Divider />
+
+        <Box css={{ stack: 'y', rowGap: 'small' }}>
+          <Box css={{ font: 'bodyEmphasized' }}>Payment method</Box>
+          {!schedule ? (
+            <Box css={{ color: 'secondary' }}>
+              Payment method details load after the schedule is available.
+            </Box>
+          ) : !paymentMethod ||
+            (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
+            <Banner
+              type="caution"
+              title="No payment method on file"
+              description="The first payment can't run until a bank account is added."
+            />
+          ) : (
+            <Box css={{ stack: 'y', rowGap: 'xsmall' }}>
+              {paymentMethod.type === 'us_bank_account' ? (
+                <>
+                  <DetailRow label="Bank name">
+                    {paymentMethod.bankName ?? 'Not available'}
+                  </DetailRow>
+                  <DetailRow label="Account number">
+                    {formatMaskedBankAccountNumber(paymentMethod.last4)}
+                  </DetailRow>
+                </>
+              ) : (
+                <DetailRow label="Payment method">Payment method on file</DetailRow>
+              )}
+              <DetailRow label="Attached to customer">
+                {paymentMethod.attachedToCustomer ? 'Yes' : 'No'}
+              </DetailRow>
+              <DetailRow label="Attached to this schedule">
+                {paymentMethod.attachedToSchedule ? 'Yes' : 'No'}
+              </DetailRow>
+            </Box>
+          )}
+        </Box>
+
+        <Divider />
+
         <Box css={{ stack: 'y', rowGap: 'medium' }}>
           <Box css={{ font: 'bodyEmphasized' }}>Details</Box>
           {!phase || !phaseAmount ? (
@@ -429,17 +495,20 @@ const ScheduleWorkPane = ({
 const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   const [storedSearch, setStoredSearch] = useStorage(SEARCH_STORAGE_KEY);
   const cachedSearch = useMemo(() => parseCachedSearch(storedSearch), [storedSearch]);
-  const [accountNumber, setAccountNumber] = useState(cachedSearch?.accountNumber ?? '');
-  const [confirmationNumber, setConfirmationNumber] = useState(
-    cachedSearch?.confirmationNumber ?? ''
-  );
+  const [accountNumber, setAccountNumber] = useState('');
+  const [confirmationNumber, setConfirmationNumber] = useState('');
   const [results, setResults] = useState<SearchResult[]>(cachedSearch?.results ?? []);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(cachedSearch?.searched ?? false);
+  const [capped, setCapped] = useState(cachedSearch?.capped ?? false);
+  const [loading, setLoading] = useState(cachedSearch === null);
+  const [loadedProgress, setLoadedProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [scannedScheduleCount, setScannedScheduleCount] = useState(
-    cachedSearch?.scannedScheduleCount ?? 0
-  );
+  const [loaded, setLoaded] = useState(cachedSearch !== null);
+  const [submittedCriteria, setSubmittedCriteria] = useState<{
+    accountNumber: string;
+    confirmationNumber: string;
+  } | null>(null);
+
+  // Detail state (unchanged from before)
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedSchedule, setSelectedSchedule] =
@@ -448,134 +517,90 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const scheduleRequestId = useRef(0);
 
-  const trimmedAccountNumber = accountNumber.trim();
-  const trimmedConfirmationNumber = confirmationNumber.trim();
-  const hasAccountNumber = trimmedAccountNumber.length > 0;
-  const hasConfirmationNumber = trimmedConfirmationNumber.length > 0;
-  const hasSearchCriteria = hasAccountNumber || hasConfirmationNumber;
-  const canSearch = !loading && hasSearchCriteria;
+  const filteredResults = useMemo(
+    () => (submittedCriteria ? filterResults(results, submittedCriteria) : []),
+    [results, submittedCriteria]
+  );
 
-  const resultSummary = useMemo(() => {
-    if (!searched || loading || error || results.length > 0) {
-      return null;
-    }
-
-    return `Scanned ${scannedScheduleCount} subscription schedule${
-      scannedScheduleCount === 1 ? '' : 's'
-    }, but found no matches.`;
-  }, [error, loading, results.length, scannedScheduleCount, searched]);
-
-  const searchSchedules = async () => {
-    if (!canSearch) {
-      return;
-    }
-
-    scheduleRequestId.current += 1;
-    setSelectedResult(null);
-    setSelectedSchedule(null);
-    setScheduleError(null);
+  const loadWindow = async () => {
     setLoading(true);
-    setSearched(true);
     setError(null);
-    setResults([]);
-    setScannedScheduleCount(0);
+    setLoadedProgress(0);
 
     try {
-      const matches: SearchResult[] = [];
-      let scannedCount = 0;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const createdGte = getWindowStartTimestamp(nowSeconds);
+      const collected: SearchResult[] = [];
       let startingAfter: string | undefined;
-      let reachedLimit = false;
+      let reachedCap = false;
 
-      while (matches.length < MAX_RESULTS) {
+      while (true) {
         const page = await stripe.subscriptionSchedules.list({
+          scheduled: true,
+          created: { gte: createdGte },
           expand: ['data.customer'],
           limit: PAGE_SIZE,
-          scheduled: true,
           ...(startingAfter ? { starting_after: startingAfter } : {}),
         });
 
-        scannedCount += page.data.length;
-
         for (const schedule of page.data) {
-          const scheduleAccountNumber =
-            schedule.metadata?.[ACCOUNT_NUMBER_METADATA_KEY] ?? '';
-          const scheduleConfirmationNumber =
-            schedule.metadata?.[CONFIRMATION_NUMBER_METADATA_KEY] ?? '';
-          const accountNumberMatches =
-            hasAccountNumber &&
-            includesSearchTerm(scheduleAccountNumber, trimmedAccountNumber);
-          const confirmationNumberMatches =
-            hasConfirmationNumber &&
-            includesSearchTerm(scheduleConfirmationNumber, trimmedConfirmationNumber);
-          const isMatch =
-            (!hasAccountNumber || accountNumberMatches) &&
-            (!hasConfirmationNumber || confirmationNumberMatches);
-
-          if (!isMatch) {
-            continue;
-          }
-
-          matches.push({
+          collected.push({
             scheduleId: schedule.id,
             customerId: getResourceId(schedule.customer) ?? '',
             customerEmail: getCustomerEmail(schedule.customer),
-            accountNumber: scheduleAccountNumber,
-            confirmationNumber: scheduleConfirmationNumber,
+            accountNumber: schedule.metadata?.[ACCOUNT_NUMBER_METADATA_KEY] ?? '',
+            confirmationNumber:
+              schedule.metadata?.[CONFIRMATION_NUMBER_METADATA_KEY] ?? '',
             startDate: getScheduleStartDate(schedule),
           });
-
-          if (matches.length >= MAX_RESULTS) {
-            reachedLimit = true;
-            break;
-          }
         }
 
-        if (!page.has_more || matches.length >= MAX_RESULTS) {
+        setLoadedProgress(collected.length);
+
+        if (collected.length >= PRELOAD_CAP) {
+          reachedCap = true;
           break;
         }
-
+        if (!page.has_more) {
+          break;
+        }
         startingAfter = page.data.at(-1)?.id;
-
         if (!startingAfter) {
           break;
         }
       }
 
-      setResults(matches);
-      setScannedScheduleCount(scannedCount);
-      const cachedSearchToStore: CachedSearch = {
-        accountNumber: trimmedAccountNumber,
-        confirmationNumber: trimmedConfirmationNumber,
-        scannedScheduleCount: scannedCount,
-        results: matches,
-        searched: true,
-        stoppedEarly: reachedLimit,
+      const sorted = sortBySoonestStart(collected.slice(0, PRELOAD_CAP));
+      setResults(sorted);
+      setCapped(reachedCap);
+      setLoaded(true);
+
+      const cacheToStore: CachedSearch = {
+        accountNumber: '',
+        confirmationNumber: '',
+        results: sorted,
+        loadedAt: nowSeconds,
+        capped: reachedCap,
       };
-      setStoredSearch(JSON.stringify(cachedSearchToStore));
+      setStoredSearch(JSON.stringify(cacheToStore));
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : 'Unable to search subscription schedules.'
+          : 'Unable to load subscription schedules.'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const startNewSearch = () => {
-    setAccountNumber('');
-    setConfirmationNumber('');
-    setResults([]);
-    setSearched(false);
-    setError(null);
-    setScannedScheduleCount(0);
-    scheduleRequestId.current += 1;
-    setSelectedResult(null);
-    setSelectedSchedule(null);
-    setScheduleError(null);
-    setStoredSearch('');
-  };
+  // Preload once per open if we have no cached index yet.
+  useEffect(() => {
+    if (!loaded) {
+      void loadWindow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const closeScheduleWorkPane = () => {
     scheduleRequestId.current += 1;
@@ -585,18 +610,38 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
     setScheduleLoading(false);
   };
 
+  const startNewSearch = () => {
+    closeScheduleWorkPane();
+    setAccountNumber('');
+    setConfirmationNumber('');
+    setSubmittedCriteria(null);
+    void loadWindow();
+  };
+
+  const submitSearch = () => {
+    setSubmittedCriteria({ accountNumber, confirmationNumber });
+  };
+
+  const hasSearchCriteria = Boolean(accountNumber.trim() || confirmationNumber.trim());
+  const hasSubmittedSearch = submittedCriteria !== null;
+
   const openScheduleWorkPane = async (result: SearchResult, index?: number) => {
     const currentRequestId = scheduleRequestId.current + 1;
     scheduleRequestId.current = currentRequestId;
     setSelectedResult(result);
-    setSelectedIndex(index ?? results.indexOf(result));
+    setSelectedIndex(index ?? filteredResults.indexOf(result));
     setSelectedSchedule(null);
     setScheduleError(null);
     setScheduleLoading(true);
 
     try {
       const schedule = await stripe.subscriptionSchedules.retrieve(result.scheduleId, {
-        expand: ['customer', 'phases.items.price'],
+        expand: [
+          'customer',
+          'customer.invoice_settings.default_payment_method',
+          'phases.items.price',
+          'default_settings.default_payment_method',
+        ],
       });
 
       if (scheduleRequestId.current === currentRequestId) {
@@ -620,88 +665,95 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   return (
     <ContextView title="" brandColor="#F6F8FA" brandIcon={BrandIcon}>
       <Box css={{ stack: 'y', rowGap: 'large' }}>
-        <Link href={getDashboardUrl(environment.mode, '/')}>
-          &larr; Toolbar Home
-        </Link>
-        {results.length === 0 ? (
-          <Box css={{ stack: 'y', rowGap: 'medium' }}>
-            <Box
-              css={{ stack: 'x', columnGap: 'xsmall', alignY: 'center', wrap: 'nowrap' }}
-            >
-              <Box css={{ font: 'bodyEmphasized', whiteSpace: 'nowrap' }}>
-                Scheduled Subscription Search
-              </Box>
-              <Tooltip
-                type="description"
-                placement="top"
-                trigger={<Icon name="info" size="small" css={{ fill: 'secondary' }} />}
-              >
-                Enter an account number, a confirmation number, or both. When you enter
-                both, results must match both.
-              </Tooltip>
+        <Link href={getDashboardUrl(environment.mode, '/')}>&larr; Toolbar Home</Link>
+
+        <Box css={{ stack: 'y', rowGap: 'medium' }}>
+          <Box
+            css={{ stack: 'x', columnGap: 'xsmall', alignY: 'center', wrap: 'nowrap' }}
+          >
+            <Box css={{ font: 'bodyEmphasized', whiteSpace: 'nowrap' }}>
+              Scheduled Subscription Search
             </Box>
-            <TextField
-              label="Account number"
-              placeholder="123456"
-              type="search"
-              value={accountNumber}
-              onChange={(event) => setAccountNumber(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void searchSchedules();
-                }
-              }}
-            />
-            <TextField
-              label="Confirmation number"
-              placeholder="ABC123"
-              type="search"
-              value={confirmationNumber}
-              onChange={(event) => setConfirmationNumber(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  void searchSchedules();
-                }
-              }}
-            />
+            <Tooltip
+              type="description"
+              placement="top"
+              trigger={<Icon name="info" size="small" css={{ fill: 'secondary' }} />}
+            >
+              Search the last {LOOKBACK_DAYS} days of not-yet-started schedules by account
+              number, confirmation number, or both. When you enter both, results must
+              match both.
+            </Tooltip>
+          </Box>
+          <TextField
+            label="Account number"
+            placeholder="123456"
+            type="search"
+            value={accountNumber}
+            onChange={(event) => setAccountNumber(event.target.value)}
+          />
+          <TextField
+            label="Confirmation number"
+            placeholder="ABC123"
+            type="search"
+            value={confirmationNumber}
+            onChange={(event) => setConfirmationNumber(event.target.value)}
+          />
+          <Box css={{ stack: 'x', columnGap: 'small' }}>
             <Button
               type="primary"
-              disabled={!canSearch}
-              pending={loading}
-              onPress={() => void searchSchedules()}
+              disabled={loading || !hasSearchCriteria}
+              onPress={submitSearch}
             >
-              Search
+              Find schedules
             </Button>
+            {hasSubmittedSearch && (
+              <Button type="secondary" onPress={startNewSearch}>
+                New search
+              </Button>
+            )}
           </Box>
-        ) : (
-          <Box css={{ stack: 'x', distribute: 'space-between', alignY: 'center' }}>
-            <Box css={{ font: 'bodyEmphasized' }}>Search results</Box>
-            <Link onPress={startNewSearch}>Start a new search</Link>
-          </Box>
-        )}
+        </Box>
 
         {loading && (
           <Box css={{ stack: 'x', columnGap: 'small' }}>
             <Spinner size="small" />
-            <Box>Searching not-yet-started subscription schedules...</Box>
+            <Box>Loading scheduled subscriptions... ({loadedProgress})</Box>
           </Box>
         )}
 
-        {error && <Banner type="critical" title="Search failed" description={error} />}
+        {error && <Banner type="critical" title="Unable to load" description={error} />}
 
-        {resultSummary && (
+        {hasSubmittedSearch && capped && !loading && (
           <Banner
             type="caution"
-            title="No matching schedules"
-            description={resultSummary}
+            title="Showing the most recent schedules"
+            description={`Showing the ${PRELOAD_CAP} most recent scheduled subscriptions. Narrow by account or confirmation number to find older ones.`}
           />
         )}
 
-        {results.length > 0 && (
+        {hasSubmittedSearch && loaded && !loading && !error && (
+          <Box css={{ font: 'caption', color: 'secondary' }}>
+            {filteredResults.length} of {results.length}
+          </Box>
+        )}
+
+        {hasSubmittedSearch &&
+          loaded &&
+          !loading &&
+          !error &&
+          filteredResults.length === 0 && (
+            <Banner
+              type="caution"
+              title="No matching schedules"
+              description="No not-yet-started schedules match. Once a subscription starts, use universal search instead."
+            />
+          )}
+
+        {hasSubmittedSearch && filteredResults.length > 0 && (
           <ScheduleSearchResults
             mode={environment.mode}
             onSelect={(result) => void openScheduleWorkPane(result)}
-            results={results}
+            results={filteredResults}
           />
         )}
       </Box>
@@ -711,10 +763,10 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           loading={scheduleLoading}
           mode={environment.mode}
           onClose={closeScheduleWorkPane}
-          onNavigate={(index) => void openScheduleWorkPane(results[index], index)}
+          onNavigate={(index) => void openScheduleWorkPane(filteredResults[index], index)}
           onNewSearch={startNewSearch}
           result={selectedResult}
-          results={results}
+          results={filteredResults}
           schedule={selectedSchedule}
           selectedIndex={selectedIndex}
         />

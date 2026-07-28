@@ -47,7 +47,9 @@ describe('ScheduleWorkPane payment method', () => {
       />
     );
 
-    expect(wrapper).toContainText('No payment method on file');
-    expect(wrapper.find(Banner)).toContainText('No payment method on file');
+    expect(wrapper.find(Banner)).toHaveProps({
+      type: 'caution',
+      title: 'No payment method on file',
+    });
   });
 });

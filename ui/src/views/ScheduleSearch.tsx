@@ -418,10 +418,11 @@ export const ScheduleWorkPane = ({
         <Box css={{ stack: 'y', rowGap: 'small' }}>
           <Box css={{ font: 'bodyEmphasized' }}>Payment method</Box>
           {!paymentMethod || (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
-            <Banner type="caution">
-              <Box css={{ font: 'bodyEmphasized' }}>No payment method on file</Box>
-              <Box>The first payment can&apos;t run until a bank account is added.</Box>
-            </Banner>
+            <Banner
+              type="caution"
+              title="No payment method on file"
+              description="The first payment can't run until a bank account is added."
+            />
           ) : (
             <Box css={{ stack: 'y', rowGap: 'xsmall' }}>
               <DetailRow label="Bank account">

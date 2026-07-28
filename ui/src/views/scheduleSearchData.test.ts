@@ -48,7 +48,9 @@ describe('filterResults', () => {
   ];
 
   it('returns all results when no criteria given', () => {
-    expect(filterResults(results, { accountNumber: '  ', confirmationNumber: '' })).toHaveLength(2);
+    expect(
+      filterResults(results, { accountNumber: '  ', confirmationNumber: '' })
+    ).toHaveLength(2);
   });
 
   it('matches account number case-insensitively as a substring', () => {
@@ -68,7 +70,10 @@ describe('filterResults', () => {
 
 describe('sortBySoonestStart', () => {
   it('orders by soonest start date first without mutating input', () => {
-    const input = [makeResult({ scheduleId: 'late', startDate: 3000 }), makeResult({ scheduleId: 'soon', startDate: 1000 })];
+    const input = [
+      makeResult({ scheduleId: 'late', startDate: 3000 }),
+      makeResult({ scheduleId: 'soon', startDate: 1000 }),
+    ];
     const out = sortBySoonestStart(input);
     expect(out.map((r) => r.scheduleId)).toEqual(['soon', 'late']);
     expect(input[0].scheduleId).toBe('late');
@@ -88,7 +93,11 @@ describe('parseCachedSearch (v7 index)', () => {
   });
 
   it('returns null for missing loadedAt/capped fields', () => {
-    expect(parseCachedSearch(JSON.stringify({ accountNumber: '', confirmationNumber: '', results: [] }))).toBeNull();
+    expect(
+      parseCachedSearch(
+        JSON.stringify({ accountNumber: '', confirmationNumber: '', results: [] })
+      )
+    ).toBeNull();
   });
 
   it('returns null for non-JSON', () => {
@@ -108,7 +117,11 @@ const scheduleWith = (overrides: object): Stripe.SubscriptionSchedule =>
   }) as unknown as Stripe.SubscriptionSchedule;
 
 const bankPm = (last4: string, bankName: string) =>
-  ({ id: 'pm_1', type: 'us_bank_account', us_bank_account: { last4, bank_name: bankName } }) as unknown as Stripe.PaymentMethod;
+  ({
+    id: 'pm_1',
+    type: 'us_bank_account',
+    us_bank_account: { last4, bank_name: bankName },
+  }) as unknown as Stripe.PaymentMethod;
 
 describe('formatBankAccount', () => {
   it('masks to bank name and last4', () => {
@@ -138,7 +151,10 @@ describe('resolvePaymentMethod', () => {
   it('falls back to the customer default when the schedule has none', () => {
     const schedule = scheduleWith({
       default_settings: {},
-      customer: { id: 'cus_1', invoice_settings: { default_payment_method: bankPm('1122', 'Wells Fargo') } },
+      customer: {
+        id: 'cus_1',
+        invoice_settings: { default_payment_method: bankPm('1122', 'Wells Fargo') },
+      },
     });
     const out = resolvePaymentMethod(schedule);
     expect(out.attachedToSchedule).toBe(false);

@@ -8,7 +8,9 @@ const UIExtensionsConfig = require('@stripe/ui-extension-tools/jest.config.ui-ex
 // react isn't a direct dep here, so resolve the SDK's own copy and force
 // everything onto it for the whole test run.
 const sdkDir = path.dirname(require.resolve('@stripe/ui-extension-sdk/package.json'));
-const reactPath = path.dirname(require.resolve('react/package.json', { paths: [sdkDir] }));
+const reactPath = path.dirname(
+  require.resolve('react/package.json', { paths: [sdkDir] })
+);
 
 module.exports = {
   ...UIExtensionsConfig,

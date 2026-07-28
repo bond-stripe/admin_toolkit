@@ -408,7 +408,11 @@ export const ScheduleWorkPane = ({
           )}
           {phase && phaseAmount && (
             <DetailRow label="First charge amount">
-              {formatPhaseAmount(phaseAmount.amount, phaseAmount.currency, phaseAmount.variable)}
+              {formatPhaseAmount(
+                phaseAmount.amount,
+                phaseAmount.currency,
+                phaseAmount.variable
+              )}
             </DetailRow>
           )}
         </Box>
@@ -417,7 +421,8 @@ export const ScheduleWorkPane = ({
 
         <Box css={{ stack: 'y', rowGap: 'small' }}>
           <Box css={{ font: 'bodyEmphasized' }}>Payment method</Box>
-          {!paymentMethod || (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
+          {!paymentMethod ||
+          (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
             <Banner
               type="caution"
               title="No payment method on file"
@@ -641,7 +646,9 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
         <Link href={getDashboardUrl(environment.mode, '/')}>&larr; Toolbar Home</Link>
 
         <Box css={{ stack: 'y', rowGap: 'medium' }}>
-          <Box css={{ stack: 'x', columnGap: 'xsmall', alignY: 'center', wrap: 'nowrap' }}>
+          <Box
+            css={{ stack: 'x', columnGap: 'xsmall', alignY: 'center', wrap: 'nowrap' }}
+          >
             <Box css={{ font: 'bodyEmphasized', whiteSpace: 'nowrap' }}>
               Scheduled Subscription Search
             </Box>
@@ -651,8 +658,8 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
               trigger={<Icon name="info" size="small" css={{ fill: 'secondary' }} />}
             >
               Filter the last {LOOKBACK_DAYS} days of not-yet-started schedules by account
-              number, confirmation number, or both. When you enter both, results must match
-              both.
+              number, confirmation number, or both. When you enter both, results must
+              match both.
             </Tooltip>
           </Box>
           <TextField
@@ -678,7 +685,12 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
             >
               Clear
             </Button>
-            <Button type="secondary" size="small" disabled={loading} onPress={() => void loadWindow()}>
+            <Button
+              type="secondary"
+              size="small"
+              disabled={loading}
+              onPress={() => void loadWindow()}
+            >
               Refresh
             </Button>
           </Box>

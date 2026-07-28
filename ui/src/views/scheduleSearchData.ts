@@ -101,8 +101,7 @@ export const formatBankAccount = (
 
 const asPaymentMethodObject = (
   value: string | Stripe.PaymentMethod | null | undefined
-): Stripe.PaymentMethod | null =>
-  value && typeof value === 'object' ? value : null;
+): Stripe.PaymentMethod | null => (value && typeof value === 'object' ? value : null);
 
 export const resolvePaymentMethod = (
   schedule: Stripe.SubscriptionSchedule

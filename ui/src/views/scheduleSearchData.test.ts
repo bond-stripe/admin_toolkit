@@ -106,7 +106,10 @@ describe('parseCachedSearch (v7 index)', () => {
 });
 
 import type Stripe from 'stripe';
-import { formatBankAccount, resolvePaymentMethod } from './scheduleSearchData';
+import {
+  formatMaskedBankAccountNumber,
+  resolvePaymentMethod,
+} from './scheduleSearchData';
 
 const scheduleWith = (overrides: object): Stripe.SubscriptionSchedule =>
   ({
@@ -123,13 +126,13 @@ const bankPm = (last4: string, bankName: string) =>
     us_bank_account: { last4, bank_name: bankName },
   }) as unknown as Stripe.PaymentMethod;
 
-describe('formatBankAccount', () => {
-  it('masks to bank name and last4', () => {
-    expect(formatBankAccount('Chase', '6789')).toBe('Chase ••••6789');
+describe('formatMaskedBankAccountNumber', () => {
+  it('masks to the account last four digits', () => {
+    expect(formatMaskedBankAccountNumber('6789')).toBe('••••6789');
   });
-  it('falls back to last4 only, then a generic label', () => {
-    expect(formatBankAccount(null, '6789')).toBe('••••6789');
-    expect(formatBankAccount(null, null)).toBe('Payment method on file');
+
+  it('indicates when account digits are unavailable', () => {
+    expect(formatMaskedBankAccountNumber(null)).toBe('Not available');
   });
 });
 

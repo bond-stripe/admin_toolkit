@@ -81,23 +81,8 @@ export type PaymentMethodSummary = {
   attachedToSchedule: boolean;
 };
 
-export const formatBankAccount = (
-  bankName: string | null,
-  last4: string | null
-): string => {
-  const masked = last4 ? `••••${last4}` : '';
-
-  if (bankName && masked) {
-    return `${bankName} ${masked}`;
-  }
-  if (bankName) {
-    return bankName;
-  }
-  if (masked) {
-    return masked;
-  }
-  return 'Payment method on file';
-};
+export const formatMaskedBankAccountNumber = (last4: string | null): string =>
+  last4 ? `••••${last4}` : 'Not available';
 
 const asPaymentMethodObject = (
   value: string | Stripe.PaymentMethod | null | undefined

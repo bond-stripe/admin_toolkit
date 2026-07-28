@@ -23,9 +23,9 @@ import { clipboardWriteText } from '@stripe/ui-extension-sdk/utils';
 import BrandIcon from './brand_icon.svg';
 import {
   filterResults,
-  formatBankAccount,
   formatCustomerId,
   formatDate,
+  formatMaskedBankAccountNumber,
   formatScheduleId,
   getDashboardUrl,
   getWindowStartTimestamp,
@@ -431,9 +431,18 @@ export const ScheduleWorkPane = ({
             />
           ) : (
             <Box css={{ stack: 'y', rowGap: 'xsmall' }}>
-              <DetailRow label="Bank account">
-                {formatBankAccount(paymentMethod.bankName, paymentMethod.last4)}
-              </DetailRow>
+              {paymentMethod.type === 'us_bank_account' ? (
+                <>
+                  <DetailRow label="Bank name">
+                    {paymentMethod.bankName ?? 'Not available'}
+                  </DetailRow>
+                  <DetailRow label="Account number">
+                    {formatMaskedBankAccountNumber(paymentMethod.last4)}
+                  </DetailRow>
+                </>
+              ) : (
+                <DetailRow label="Payment method">Payment method on file</DetailRow>
+              )}
               <DetailRow label="Attached to customer">
                 {paymentMethod.attachedToCustomer ? 'Yes' : 'No'}
               </DetailRow>
@@ -486,16 +495,18 @@ export const ScheduleWorkPane = ({
 const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   const [storedSearch, setStoredSearch] = useStorage(SEARCH_STORAGE_KEY);
   const cachedSearch = useMemo(() => parseCachedSearch(storedSearch), [storedSearch]);
-  const [accountNumber, setAccountNumber] = useState(cachedSearch?.accountNumber ?? '');
-  const [confirmationNumber, setConfirmationNumber] = useState(
-    cachedSearch?.confirmationNumber ?? ''
-  );
+  const [accountNumber, setAccountNumber] = useState('');
+  const [confirmationNumber, setConfirmationNumber] = useState('');
   const [results, setResults] = useState<SearchResult[]>(cachedSearch?.results ?? []);
   const [capped, setCapped] = useState(cachedSearch?.capped ?? false);
   const [loading, setLoading] = useState(cachedSearch === null);
   const [loadedProgress, setLoadedProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(cachedSearch !== null);
+  const [submittedCriteria, setSubmittedCriteria] = useState<{
+    accountNumber: string;
+    confirmationNumber: string;
+  } | null>(null);
 
   // Detail state (unchanged from before)
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
@@ -507,8 +518,8 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
   const scheduleRequestId = useRef(0);
 
   const filteredResults = useMemo(
-    () => filterResults(results, { accountNumber, confirmationNumber }),
-    [results, accountNumber, confirmationNumber]
+    () => (submittedCriteria ? filterResults(results, submittedCriteria) : []),
+    [results, submittedCriteria]
   );
 
   const loadWindow = async () => {
@@ -565,8 +576,8 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
       setLoaded(true);
 
       const cacheToStore: CachedSearch = {
-        accountNumber,
-        confirmationNumber,
+        accountNumber: '',
+        confirmationNumber: '',
         results: sorted,
         loadedAt: nowSeconds,
         capped: reachedCap,
@@ -591,11 +602,6 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const clearFilters = () => {
-    setAccountNumber('');
-    setConfirmationNumber('');
-  };
-
   const closeScheduleWorkPane = () => {
     scheduleRequestId.current += 1;
     setSelectedResult(null);
@@ -603,6 +609,21 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
     setScheduleError(null);
     setScheduleLoading(false);
   };
+
+  const startNewSearch = () => {
+    closeScheduleWorkPane();
+    setAccountNumber('');
+    setConfirmationNumber('');
+    setSubmittedCriteria(null);
+    void loadWindow();
+  };
+
+  const submitSearch = () => {
+    setSubmittedCriteria({ accountNumber, confirmationNumber });
+  };
+
+  const hasSearchCriteria = Boolean(accountNumber.trim() || confirmationNumber.trim());
+  const hasSubmittedSearch = submittedCriteria !== null;
 
   const openScheduleWorkPane = async (result: SearchResult, index?: number) => {
     const currentRequestId = scheduleRequestId.current + 1;
@@ -658,7 +679,7 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
               placement="top"
               trigger={<Icon name="info" size="small" css={{ fill: 'secondary' }} />}
             >
-              Filter the last {LOOKBACK_DAYS} days of not-yet-started schedules by account
+              Search the last {LOOKBACK_DAYS} days of not-yet-started schedules by account
               number, confirmation number, or both. When you enter both, results must
               match both.
             </Tooltip>
@@ -679,21 +700,17 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           />
           <Box css={{ stack: 'x', columnGap: 'small' }}>
             <Button
-              type="secondary"
-              size="small"
-              disabled={loading || (!accountNumber && !confirmationNumber)}
-              onPress={clearFilters}
+              type="primary"
+              disabled={loading || !hasSearchCriteria}
+              onPress={submitSearch}
             >
-              Clear
+              Find schedules
             </Button>
-            <Button
-              type="secondary"
-              size="small"
-              disabled={loading}
-              onPress={() => void loadWindow()}
-            >
-              Refresh
-            </Button>
+            {hasSubmittedSearch && (
+              <Button type="secondary" onPress={startNewSearch}>
+                New search
+              </Button>
+            )}
           </Box>
         </Box>
 
@@ -706,7 +723,7 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
 
         {error && <Banner type="critical" title="Unable to load" description={error} />}
 
-        {capped && !loading && (
+        {hasSubmittedSearch && capped && !loading && (
           <Banner
             type="caution"
             title="Showing the most recent schedules"
@@ -714,23 +731,25 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           />
         )}
 
-        {loaded && !loading && !error && (
+        {hasSubmittedSearch && loaded && !loading && !error && (
           <Box css={{ font: 'caption', color: 'secondary' }}>
-            {accountNumber || confirmationNumber
-              ? `${filteredResults.length} of ${results.length}`
-              : `Showing ${results.length} scheduled sub${results.length === 1 ? '' : 's'} from the last ${LOOKBACK_DAYS} days`}
+            {filteredResults.length} of {results.length}
           </Box>
         )}
 
-        {loaded && !loading && !error && filteredResults.length === 0 && (
-          <Banner
-            type="caution"
-            title="No matching schedules"
-            description="No not-yet-started schedules match. Once a subscription starts, use universal search instead."
-          />
-        )}
+        {hasSubmittedSearch &&
+          loaded &&
+          !loading &&
+          !error &&
+          filteredResults.length === 0 && (
+            <Banner
+              type="caution"
+              title="No matching schedules"
+              description="No not-yet-started schedules match. Once a subscription starts, use universal search instead."
+            />
+          )}
 
-        {filteredResults.length > 0 && (
+        {hasSubmittedSearch && filteredResults.length > 0 && (
           <ScheduleSearchResults
             mode={environment.mode}
             onSelect={(result) => void openScheduleWorkPane(result)}
@@ -745,7 +764,7 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
           mode={environment.mode}
           onClose={closeScheduleWorkPane}
           onNavigate={(index) => void openScheduleWorkPane(filteredResults[index], index)}
-          onNewSearch={clearFilters}
+          onNewSearch={startNewSearch}
           result={selectedResult}
           results={filteredResults}
           schedule={selectedSchedule}

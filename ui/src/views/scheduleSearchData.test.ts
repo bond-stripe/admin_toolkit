@@ -95,3 +95,74 @@ describe('parseCachedSearch (v7 index)', () => {
     expect(parseCachedSearch('not json')).toBeNull();
   });
 });
+
+import type Stripe from 'stripe';
+import { formatBankAccount, resolvePaymentMethod } from './scheduleSearchData';
+
+const scheduleWith = (overrides: object): Stripe.SubscriptionSchedule =>
+  ({
+    id: 'sub_sched_1',
+    default_settings: {},
+    customer: { id: 'cus_1', invoice_settings: {} },
+    ...overrides,
+  }) as unknown as Stripe.SubscriptionSchedule;
+
+const bankPm = (last4: string, bankName: string) =>
+  ({ id: 'pm_1', type: 'us_bank_account', us_bank_account: { last4, bank_name: bankName } }) as unknown as Stripe.PaymentMethod;
+
+describe('formatBankAccount', () => {
+  it('masks to bank name and last4', () => {
+    expect(formatBankAccount('Chase', '6789')).toBe('Chase ••••6789');
+  });
+  it('falls back to last4 only, then a generic label', () => {
+    expect(formatBankAccount(null, '6789')).toBe('••••6789');
+    expect(formatBankAccount(null, null)).toBe('Payment method on file');
+  });
+});
+
+describe('resolvePaymentMethod', () => {
+  it('reads bank details from the schedule default and marks both attachments', () => {
+    const schedule = scheduleWith({
+      default_settings: { default_payment_method: bankPm('6789', 'Chase') },
+      customer: { id: 'cus_1', invoice_settings: { default_payment_method: 'pm_1' } },
+    });
+    expect(resolvePaymentMethod(schedule)).toEqual({
+      type: 'us_bank_account',
+      bankName: 'Chase',
+      last4: '6789',
+      attachedToCustomer: true,
+      attachedToSchedule: true,
+    });
+  });
+
+  it('falls back to the customer default when the schedule has none', () => {
+    const schedule = scheduleWith({
+      default_settings: {},
+      customer: { id: 'cus_1', invoice_settings: { default_payment_method: bankPm('1122', 'Wells Fargo') } },
+    });
+    const out = resolvePaymentMethod(schedule);
+    expect(out.attachedToSchedule).toBe(false);
+    expect(out.attachedToCustomer).toBe(true);
+    expect(out.bankName).toBe('Wells Fargo');
+  });
+
+  it('reports no attachment when nothing is set', () => {
+    expect(resolvePaymentMethod(scheduleWith({}))).toEqual({
+      type: null,
+      bankName: null,
+      last4: null,
+      attachedToCustomer: false,
+      attachedToSchedule: false,
+    });
+  });
+
+  it('handles a non-bank method without bank fields', () => {
+    const card = { id: 'pm_c', type: 'card' } as unknown as Stripe.PaymentMethod;
+    const out = resolvePaymentMethod(
+      scheduleWith({ default_settings: { default_payment_method: card } })
+    );
+    expect(out.type).toBe('card');
+    expect(out.bankName).toBeNull();
+    expect(out.attachedToSchedule).toBe(true);
+  });
+});

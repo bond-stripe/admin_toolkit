@@ -1,4 +1,5 @@
 import type { ExtensionContextValue } from '@stripe/ui-extension-sdk/context';
+import type Stripe from 'stripe';
 
 export const SEARCH_STORAGE_KEY = 'scheduled-subscription-search:preloaded-index:v7';
 export type SearchResult = {
@@ -71,6 +72,65 @@ export const formatScheduleId = (scheduleId: string) =>
 
 export const formatCustomerId = (customerId: string) =>
   customerId.length > 10 ? `cus_...${customerId.slice(-6)}` : customerId;
+
+export type PaymentMethodSummary = {
+  type: string | null;
+  bankName: string | null;
+  last4: string | null;
+  attachedToCustomer: boolean;
+  attachedToSchedule: boolean;
+};
+
+export const formatBankAccount = (
+  bankName: string | null,
+  last4: string | null
+): string => {
+  const masked = last4 ? `••••${last4}` : '';
+
+  if (bankName && masked) {
+    return `${bankName} ${masked}`;
+  }
+  if (bankName) {
+    return bankName;
+  }
+  if (masked) {
+    return masked;
+  }
+  return 'Payment method on file';
+};
+
+const asPaymentMethodObject = (
+  value: string | Stripe.PaymentMethod | null | undefined
+): Stripe.PaymentMethod | null =>
+  value && typeof value === 'object' ? value : null;
+
+export const resolvePaymentMethod = (
+  schedule: Stripe.SubscriptionSchedule
+): PaymentMethodSummary => {
+  const scheduleDefault = schedule.default_settings?.default_payment_method ?? null;
+  const attachedToSchedule = scheduleDefault !== null;
+
+  const customer =
+    schedule.customer &&
+    typeof schedule.customer === 'object' &&
+    !('deleted' in schedule.customer)
+      ? schedule.customer
+      : null;
+  const customerDefault = customer?.invoice_settings?.default_payment_method ?? null;
+  const attachedToCustomer = customerDefault !== null;
+
+  const paymentMethod =
+    asPaymentMethodObject(scheduleDefault) ?? asPaymentMethodObject(customerDefault);
+  const bankAccount = paymentMethod?.us_bank_account ?? null;
+
+  return {
+    type: paymentMethod?.type ?? null,
+    bankName: bankAccount?.bank_name ?? null,
+    last4: bankAccount?.last4 ?? null,
+    attachedToCustomer,
+    attachedToSchedule,
+  };
+};
 
 export const parseCachedSearch = (value: string | null): CachedSearch | null => {
   if (!value) {

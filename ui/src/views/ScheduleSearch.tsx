@@ -23,6 +23,7 @@ import { clipboardWriteText } from '@stripe/ui-extension-sdk/utils';
 import BrandIcon from './brand_icon.svg';
 import {
   filterResults,
+  formatBankAccount,
   formatCustomerId,
   formatDate,
   formatScheduleId,
@@ -31,6 +32,7 @@ import {
   LOOKBACK_DAYS,
   parseCachedSearch,
   PRELOAD_CAP,
+  resolvePaymentMethod,
   sortBySoonestStart,
   SEARCH_STORAGE_KEY,
   type CachedSearch,
@@ -257,7 +259,7 @@ type ScheduleWorkPaneProps = {
   selectedIndex: number;
 };
 
-const ScheduleWorkPane = ({
+export const ScheduleWorkPane = ({
   error,
   loading,
   mode,
@@ -277,6 +279,7 @@ const ScheduleWorkPane = ({
   const phase = schedule?.phases[0] ?? null;
   const phaseIterations = phase ? getIterationCount(phase) : null;
   const phaseAmount = phase ? getPhaseAmount(phase) : null;
+  const paymentMethod = schedule ? resolvePaymentMethod(schedule) : null;
 
   return (
     <FocusView
@@ -388,6 +391,49 @@ const ScheduleWorkPane = ({
                 {formatTimestamp(schedule.current_phase.end_date)}
               </DetailRow>
             </FieldGridItem>
+          )}
+        </Box>
+
+        <Divider />
+
+        <Box css={{ stack: 'y', rowGap: 'small' }}>
+          <Box css={{ font: 'bodyEmphasized' }}>Upcoming first payment</Box>
+          <Box css={{ color: 'secondary' }}>
+            Not started — no payment has been charged yet.
+          </Box>
+          {phase && (
+            <DetailRow label="First payment scheduled for">
+              {formatTimestamp(phase.start_date)}
+            </DetailRow>
+          )}
+          {phase && phaseAmount && (
+            <DetailRow label="First charge amount">
+              {formatPhaseAmount(phaseAmount.amount, phaseAmount.currency, phaseAmount.variable)}
+            </DetailRow>
+          )}
+        </Box>
+
+        <Divider />
+
+        <Box css={{ stack: 'y', rowGap: 'small' }}>
+          <Box css={{ font: 'bodyEmphasized' }}>Payment method</Box>
+          {!paymentMethod || (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
+            <Banner type="caution">
+              <Box css={{ font: 'bodyEmphasized' }}>No payment method on file</Box>
+              <Box>The first payment can&apos;t run until a bank account is added.</Box>
+            </Banner>
+          ) : (
+            <Box css={{ stack: 'y', rowGap: 'xsmall' }}>
+              <DetailRow label="Bank account">
+                {formatBankAccount(paymentMethod.bankName, paymentMethod.last4)}
+              </DetailRow>
+              <DetailRow label="Attached to customer">
+                {paymentMethod.attachedToCustomer ? 'Yes' : 'No'}
+              </DetailRow>
+              <DetailRow label="Attached to this schedule">
+                {paymentMethod.attachedToSchedule ? 'Yes' : 'No'}
+              </DetailRow>
+            </Box>
           )}
         </Box>
 
@@ -562,7 +608,12 @@ const ScheduleSearch = ({ environment }: ExtensionContextValue) => {
 
     try {
       const schedule = await stripe.subscriptionSchedules.retrieve(result.scheduleId, {
-        expand: ['customer', 'phases.items.price'],
+        expand: [
+          'customer',
+          'customer.invoice_settings.default_payment_method',
+          'phases.items.price',
+          'default_settings.default_payment_method',
+        ],
       });
 
       if (scheduleRequestId.current === currentRequestId) {

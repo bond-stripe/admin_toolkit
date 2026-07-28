@@ -51,9 +51,6 @@ const stripe = new Stripe(STRIPE_API_KEY, {
 const getResourceId = <T extends { id: string }>(resource: string | T | null) =>
   typeof resource === 'string' ? resource : (resource?.id ?? null);
 
-const includesSearchTerm = (value: string, searchTerm: string) =>
-  value.toLowerCase().includes(searchTerm.toLowerCase());
-
 const getCustomerEmail = (customer: unknown) =>
   typeof customer === 'object' &&
   customer !== null &&
@@ -421,8 +418,12 @@ export const ScheduleWorkPane = ({
 
         <Box css={{ stack: 'y', rowGap: 'small' }}>
           <Box css={{ font: 'bodyEmphasized' }}>Payment method</Box>
-          {!paymentMethod ||
-          (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
+          {!schedule ? (
+            <Box css={{ color: 'secondary' }}>
+              Payment method details load after the schedule is available.
+            </Box>
+          ) : !paymentMethod ||
+            (!paymentMethod.attachedToCustomer && !paymentMethod.attachedToSchedule) ? (
             <Banner
               type="caution"
               title="No payment method on file"

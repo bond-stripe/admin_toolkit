@@ -24,6 +24,30 @@ describe('ScheduleWorkPane payment method', () => {
     startDate: 1_700_000_000,
   };
 
+  it('does not show no-payment-method banner while schedule is still loading', () => {
+    const { wrapper } = render(
+      <ScheduleWorkPane
+        error={null}
+        loading={true}
+        mode="test"
+        onClose={() => {}}
+        onNavigate={() => {}}
+        onNewSearch={() => {}}
+        result={baseResult}
+        results={[baseResult]}
+        schedule={null}
+        selectedIndex={0}
+      />
+    );
+
+    // The caution banner must be absent — schedule data hasn't arrived yet
+    expect(wrapper).not.toContainText('No payment method on file');
+    // Instead the neutral loading placeholder should appear
+    expect(wrapper).toContainText(
+      'Payment method details load after the schedule is available.'
+    );
+  });
+
   it('warns when no payment method is attached', () => {
     const schedule = {
       id: 'sub_sched_9',
